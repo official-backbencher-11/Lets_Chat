@@ -10,8 +10,11 @@ const router = express.Router();
 router.get('/conversations', authMiddleware, async (req, res) => {
   try {
     const userId = req.user._id;
-    const hiddenPeers = (req.user?.hidden?.peers || []).map((id) => (typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id));
-    const hiddenPeerStrs = (req.user?.hidden?.peers || []).map((id) => String(id));
+    // Load fresh hidden peers from DB to avoid any stale request-scoped user
+    const meDoc = await User.findById(userId).select('hidden.peers');
+    const hiddenList = (meDoc?.hidden?.peers || []);
+    const hiddenPeers = hiddenList.map((id) => (typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id));
+    const hiddenPeerStrs = hiddenList.map((id) => String(id));
 
     // Get all unique conversations (exclude hidden peers)
     const conversations = await Message.aggregate([
