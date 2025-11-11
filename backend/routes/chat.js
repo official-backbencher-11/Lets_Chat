@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const authMiddleware = require('../middleware/auth');
@@ -9,8 +10,9 @@ const router = express.Router();
 router.get('/conversations', authMiddleware, async (req, res) => {
   try {
     const userId = req.user._id;
+    const hiddenPeers = (req.user?.hidden?.peers || []).map((id) => new mongoose.Types.ObjectId(id));
 
-    // Get all unique conversations
+    // Get all unique conversations (exclude hidden peers)
     const conversations = await Message.aggregate([
       {
         $match: {
@@ -49,6 +51,10 @@ router.get('/conversations', authMiddleware, async (req, res) => {
             }
           }
         }
+      },
+      // Exclude hidden peers from the result set
+      {
+        $match: { _id: { $nin: hiddenPeers } }
       },
       {
         $lookup: {
