@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { authAPI, chatAPI } from '../config/api';
@@ -338,7 +338,7 @@ const Chat = () => {
       socket.off?.('message-deleted', onMsgDeleted);
       socket.off?.('refresh-messages', onRefresh);
     };
-  }, [user]);
+  }, [user, loadMessages]);
 
   // Periodic status polling to ensure eventual consistency (handles missed events/background tabs)
   useEffect(() => {
@@ -424,7 +424,6 @@ const Chat = () => {
     return () => { if (presenceTimer.current) clearInterval(presenceTimer.current); };
   }, [selectedUser, setConversations]);
 
-  const filteredConversations = conversations;
 
   const handleSelect = async (c) => {
     const u = c.user;
