@@ -1,0 +1,146 @@
+.phone-input-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.phone-input-card {
+  background: white;
+  border-radius: 20px;
+  padding: 40px;
+  max-width: 450px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.logo {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.logo h1 {
+  font-size: 36px;
+  margin: 0 0 10px 0;
+  color: #333;
+}
+
+.logo p {
+  color: #666;
+  margin: 0;
+}
+
+.phone-form h2 {
+  font-size: 24px;
+  margin: 0 0 8px 0;
+  color: #333;
+}
+
+.subtitle {
+  color: #666;
+  margin: 0 0 30px 0;
+}
+
+.error-message {
+  background: #fee;
+  color: #c33;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  border: 1px solid #fcc;
+}
+
+.input-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.country-select {
+  padding: 14px;
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  font-size: 16px;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.3s;
+  min-width: 130px;
+}
+
+.country-select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.phone-input {
+  flex: 1;
+  padding: 14px;
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  font-size: 16px;
+  transition: border-color 0.3s;
+}
+
+.phone-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.send-otp-btn {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.send-otp-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+}
+
+.send-otp-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.footer-text {
+  margin-top: 30px;
+  text-align: center;
+}
+
+.footer-text p {
+  color: #999;
+  font-size: 12px;
+  margin: 0;
+}
+
+#recaptcha-container {
+  margin-top: 20px;
+}
+
+@media (max-width: 500px) {
+  .phone-input-card {
+    padding: 30px 20px;
+  }
+  
+  .logo h1 {
+    font-size: 28px;
+  }
+  
+  .input-group {
+    flex-direction: column;
+  }
+  
+  .country-select {
+    width: 100%;
+  }
+}
