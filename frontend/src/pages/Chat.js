@@ -75,6 +75,7 @@ const Chat = () => {
   const pollTimer = useRef(null);
   const seenMsgIds = useRef(new Set());
   const presenceTimer = useRef(null);
+  const searchAreaRef = useRef(null);
 
   // Handle responsive switch
   useEffect(() => {
@@ -420,6 +421,23 @@ const Chat = () => {
     return () => document.removeEventListener('click', handler);
   }, []);
 
+  // Click-away to clear number search results and errors
+  useEffect(() => {
+    const onDocClick = (e) => {
+      try {
+        const el = searchAreaRef.current;
+        if (!el) return;
+        if (!el.contains(e.target)) {
+          setNumberResults([]);
+          setHiddenResults([]);
+          setNumberError('');
+        }
+      } catch {}
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, []);
+
   // Proactively announce going offline to get immediate lastSeen updates
   useEffect(() => {
     const onBeforeUnload = () => {
@@ -522,6 +540,10 @@ const Chat = () => {
     const normalized = { id: String(u.id || u._id), name: u.name, profilePicture: u.profilePicture, phoneNumber: u.phoneNumber };
     setSelectedUser(normalized);
     await loadMessages(normalized.id);
+    // Clear search UI once a chat is opened
+    setNumberResults([]);
+    setHiddenResults([]);
+    setNumberError('');
   };
 
   const handleSend = async (e) => {
@@ -608,7 +630,7 @@ const Chat = () => {
         </div>
 
 
-        <div className="number-search">
+        <div className="number-search" ref={searchAreaRef}>
           <div className="row">
             <input
               type="tel"
