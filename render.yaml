@@ -1,0 +1,32 @@
+# Render Blueprint for backend (web service)
+
+services:
+  - type: web
+    name: letschat-backend
+    env: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    # Set these environment variables in the Render Dashboard after creating the service
+    envVars:
+      - key: MONGODB_URI
+        value: ""  # e.g. mongodb+srv://... or Render Mongo
+      - key: JWT_SECRET
+        value: ""  # any strong random string
+      - key: ALLOWED_ORIGINS
+        value: "http://localhost:3000,https://<your-vercel-domain>"
+      - key: FIREBASE_PROJECT_ID
+        value: ""
+      - key: FIREBASE_PRIVATE_KEY_ID
+        value: ""
+      - key: FIREBASE_PRIVATE_KEY
+        value: "" # paste with \n newlines if needed
+      - key: FIREBASE_CLIENT_EMAIL
+        value: ""
+      - key: FIREBASE_CLIENT_ID
+        value: ""
+      - key: FIREBASE_CLIENT_CERT_URL
+        value: ""
