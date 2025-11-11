@@ -222,6 +222,39 @@ const Chat = () => {
         status: 'delivered',
       };
       onMessage(msg);
+
+      // If this is a new peer, immediately enrich conversations with sender info from payload
+      try {
+        const peerId = String(payload.senderId) === String(user.id) ? String(payload.recipientId) : String(payload.senderId);
+        const peerName = payload.senderName || '';
+        const peerAvatar = payload.senderProfilePicture || '';
+        if (peerId && (peerName || peerAvatar)) {
+          setConversations((prev) => {
+            const exists = prev.find((c) => String(c.user._id || c.user.id) === peerId);
+            if (!exists || !exists.user?.name || !exists.user?.profilePicture) {
+              const others = prev.filter((c) => String(c.user._id || c.user.id) !== peerId);
+              const base = exists || { user: { _id: peerId } };
+              return [
+                {
+                  ...base,
+                  user: {
+                    _id: peerId,
+                    name: peerName || base.user?.name,
+                    profilePicture: peerAvatar || base.user?.profilePicture,
+                    phoneNumber: base.user?.phoneNumber,
+                    isOnline: base.user?.isOnline,
+                    lastSeen: base.user?.lastSeen,
+                  },
+                  lastMessage: (base.lastMessage || null),
+                },
+                ...others,
+              ];
+            }
+            return prev;
+          });
+        }
+      } catch {}
+
       // If the chat is open, immediately mark as read
       try {
         if (selectedUser && String(payload.senderId) === String(selectedUser.id)) {

@@ -222,6 +222,10 @@ router.post('/send', authMiddleware, async (req, res) => {
           recipientId: String(recipientId),
           message: message.content,
           timestamp: message.createdAt,
+          // include sender profile for instant UI context on recipient side
+          senderName: message.sender?.name || req.user?.name || '',
+          senderProfilePicture: message.sender?.profilePicture || req.user?.profilePicture || '',
+          senderPhoneNumber: message.sender?.phoneNumber || req.user?.phoneNumber || ''
         };
         if (recipientRoom && recipientRoom.size > 0) {
           io.to(String(recipientId)).emit('receive-message', payload);
