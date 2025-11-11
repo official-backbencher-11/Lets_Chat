@@ -980,7 +980,16 @@ const Chat = () => {
             </div>
             <div className="profile-actions">
               <button className="profile-save" disabled={pinInput.length!==4} onClick={async ()=>{
-                try { await chatAPI.hideChat(selectedUser.id, pinInput); setPinPromptOpen(false); setPinInput(''); setSelectedUser(null);} catch(err){ console.error(err);} 
+                try {
+                  await chatAPI.hideChat(selectedUser.id, pinInput);
+                  setPinPromptOpen(false);
+                  setPinInput('');
+                  // remove from local list immediately for responsiveness
+                  setConversations(prev => prev.filter(c => String(c.user._id || c.user.id) !== String(selectedUser.id)));
+                  setSelectedUser(null);
+                  // refresh conversations in background to stay consistent
+                  try { const res = await chatAPI.getConversations(); setConversations(res.data?.conversations || []); } catch {}
+                } catch(err){ console.error(err);} 
               }}>Hide</button>
               <button className="profile-cancel" onClick={()=> setPinPromptOpen(false)}>Cancel</button>
             </div>
