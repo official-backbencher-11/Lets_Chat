@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { authAPI, chatAPI } from '../config/api';
@@ -130,7 +130,7 @@ const Chat = () => {
   useEffect(() => { selectedUserRef.current = selectedUser; }, [selectedUser]);
 
   // Load messages when selecting a conversation
-  const loadMessages = async (peerId, opts = {}) => {
+  const loadMessages = useCallback(async (peerId, opts = {}) => {
     if (!peerId) return;
     const preserve = opts.scroll === 'preserve';
     const container = messagesRef.current;
@@ -173,7 +173,7 @@ const Chat = () => {
     } finally {
       setMessagesLoading(false);
     }
-  };
+  }, [user?.id]);
 
   // Ensure we are in our user room (in case of missed join)
   useEffect(() => {
