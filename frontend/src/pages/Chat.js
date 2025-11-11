@@ -18,6 +18,7 @@ const Chat = () => {
 
   const [selectedUser, setSelectedUser] = useState(null);
   const selectedUserRef = useRef(null);
+  const userIdRef = useRef(null);
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState('');
@@ -126,8 +127,9 @@ const Chat = () => {
     }
   }, [selectedUser, conversations]);
 
-  // Keep a live ref of the selected peer for stable socket listeners
+  // Keep live refs for stable callbacks
   useEffect(() => { selectedUserRef.current = selectedUser; }, [selectedUser]);
+  useEffect(() => { userIdRef.current = user?.id || null; }, [user]);
 
   // Load messages when selecting a conversation
   const loadMessages = useCallback(async (peerId, opts = {}) => {
@@ -156,7 +158,7 @@ const Chat = () => {
       try { mapped.forEach(mm => seenMsgIds.current.add(String(mm._id))); } catch {}
       setMessages(mapped);
       // After loading, confirm read to peer (ensures blue ticks without refresh)
-      try { getSocket()?.emit('mark-read', { userId: String(user.id), peerId: String(peerId) }); } catch {}
+      try { const uid = String(userIdRef.current || ''); if (uid) { getSocket()?.emit('mark-read', { userId: uid, peerId: String(peerId) }); } } catch {}
       // Scroll behavior: preserve position if requested, otherwise go bottom
       if (preserve && container) {
         requestAnimationFrame(() => {
@@ -173,7 +175,7 @@ const Chat = () => {
     } finally {
       setMessagesLoading(false);
     }
-  }, [user?.id]);
+  }, []);
 
   // Ensure we are in our user room (in case of missed join)
   useEffect(() => {
