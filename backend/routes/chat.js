@@ -10,7 +10,8 @@ const router = express.Router();
 router.get('/conversations', authMiddleware, async (req, res) => {
   try {
     const userId = req.user._id;
-    const hiddenPeers = (req.user?.hidden?.peers || []).map((id) => new mongoose.Types.ObjectId(id));
+    const hiddenPeers = (req.user?.hidden?.peers || []).map((id) => (typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id));
+    const hiddenPeerStrs = (req.user?.hidden?.peers || []).map((id) => String(id));
 
     // Get all unique conversations (exclude hidden peers)
     const conversations = await Message.aggregate([
@@ -52,9 +53,15 @@ router.get('/conversations', authMiddleware, async (req, res) => {
           }
         }
       },
-      // Exclude hidden peers from the result set
+      // Exclude hidden peers from the result set (supports both ObjectId and string forms)
       {
         $match: { _id: { $nin: hiddenPeers } }
+      },
+      {
+        $addFields: { _idStr: { $toString: '$_id' } }
+      },
+      {
+        $match: { _idStr: { $nin: hiddenPeerStrs } }
       },
       {
         $lookup: {
@@ -87,7 +94,8 @@ router.get('/conversations', authMiddleware, async (req, res) => {
             status: '$lastMessage.status',
             sender: '$lastMessage.sender'
           },
-          unreadCount: 1
+          unreadCount: 1,
+          _idStr: 0
         }
       },
       {
