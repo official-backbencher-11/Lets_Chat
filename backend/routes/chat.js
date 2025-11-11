@@ -27,6 +27,13 @@ router.get('/conversations', authMiddleware, async (req, res) => {
           isDeleted: false
         }
       },
+      // Early exclude any messages involving hidden peers (both directions)
+      {
+        $match: {
+          sender: { $nin: hiddenPeers },
+          recipient: { $nin: hiddenPeers }
+        }
+      },
       {
         $sort: { createdAt: -1 }
       },
