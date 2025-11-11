@@ -76,6 +76,8 @@ const Chat = () => {
   const seenMsgIds = useRef(new Set());
   const presenceTimer = useRef(null);
   const searchAreaRef = useRef(null);
+  // simple in-memory cache of recent messages per peer to avoid visible lag
+  const messagesCacheRef = useRef(new Map());
 
   // Handle responsive switch
   useEffect(() => {
@@ -142,10 +144,16 @@ const Chat = () => {
       prevTop = container.scrollTop;
       prevHeight = container.scrollHeight;
     }
+    // Use cache immediately for instant paint
+    const cached = messagesCacheRef.current.get(String(peerId));
+    if (cached && !opts.force) {
+      setMessages(cached);
+    }
     setMessagesLoading(true);
     setMessagesError('');
     try {
-      const res = await chatAPI.getMessages(peerId);
+      // fetch a smaller first page to reduce latency; will still be cached
+      const res = await chatAPI.getMessages(peerId, 1, 30);
       const mapped = (res.data.messages || []).map((m) => ({
         _id: m._id,
         from: m.sender?._id || m.sender,
@@ -158,6 +166,8 @@ const Chat = () => {
       // seed dedupe set
       try { mapped.forEach(mm => seenMsgIds.current.add(String(mm._id))); } catch {}
       setMessages(mapped);
+      // update cache
+      try { messagesCacheRef.current.set(String(peerId), mapped); } catch {}
       // After loading, confirm read to peer (ensures blue ticks without refresh)
       try { const uid = String(userIdRef.current || ''); if (uid) { getSocket()?.emit('mark-read', { userId: uid, peerId: String(peerId) }); } } catch {}
       // Scroll behavior: preserve position if requested, otherwise go bottom
@@ -350,9 +360,9 @@ const Chat = () => {
       try { console.log('[socket] message-deleted', { messageId, remove, senderId, recipientId }); } catch {}
       if (!messageId) return;
       if (remove) {
-        setMessages(prev => prev.filter(m => String(m._id) !== String(messageId)));
+        setMessages(prev => { const next = prev.filter(m => String(m._id) !== String(messageId)); try { const key = String(selectedUserRef.current?.id||''); if (key) messagesCacheRef.current.set(key, next); } catch {} return next; });
       } else {
-        setMessages(prev => prev.map(m => (String(m._id) === String(messageId) ? { ...m, content: 'This message was deleted', fileUrl: '', fileName: '' } : m)));
+        setMessages(prev => { const next = prev.map(m => (String(m._id) === String(messageId) ? { ...m, content: 'This message was deleted', fileUrl: '', fileName: '' } : m)); try { const key = String(selectedUserRef.current?.id||''); if (key) messagesCacheRef.current.set(key, next); } catch {} return next; });
       }
       // Aggressive refresh of active chat to guarantee consistency if this peer is selected
       const current = selectedUserRef.current;
@@ -580,7 +590,14 @@ const Chat = () => {
         createdAt: m.createdAt || new Date().toISOString(),
         status: m.status || 'sent',
       };
-      setMessages((prev) => prev.map((msg) => (msg._id === tempId ? saved : msg)));
+      setMessages((prev) => {
+        const next = prev.map((msg) => (msg._id === tempId ? saved : msg));
+        try {
+          const key = String(selectedUser.id);
+          messagesCacheRef.current.set(key, next);
+        } catch {}
+        return next;
+      });
 
       // No client-side emit; server REST already notifies via socket
 
@@ -794,10 +811,10 @@ const Chat = () => {
                         }}>⋯</button>
                         {openMsgMenu === m._id && (
                           <div className="message-actions" onClick={(e)=> e.stopPropagation()}>
-                            <button onClick={async ()=>{ try { await chatAPI.deleteMessage(m._id, 'me'); setOpenMsgMenu(null); setMessages(prev => prev.filter(x => x._id !== m._id)); } catch(e){console.error(e);} }}>Delete for me</button>
+                            <button onClick={async ()=>{ try { await chatAPI.deleteMessage(m._id, 'me'); setOpenMsgMenu(null); setMessages(prev => { const next = prev.filter(x => x._id !== m._id); try { const key = String(selectedUser?.id||''); if (key) messagesCacheRef.current.set(key, next); } catch {} return next; }); } catch(e){console.error(e);} }}>Delete for me</button>
                             {mine && <button onClick={()=>{
                               setOpenMsgMenu(null);
-                              setConfirmModal({ open: true, title: 'Delete for everyone?', body: 'This will delete the message for both participants.', onConfirm: async ()=>{ try { await chatAPI.deleteMessage(m._id, 'everyone'); setMessages(prev => prev.filter(x => String(x._id) !== String(m._id))); } catch(e){ console.error(e);} } });
+                              setConfirmModal({ open: true, title: 'Delete for everyone?', body: 'This will delete the message for both participants.', onConfirm: async ()=>{ try { await chatAPI.deleteMessage(m._id, 'everyone'); setMessages(prev => { const next = prev.filter(x => String(x._id) !== String(m._id)); try { const key = String(selectedUser?.id||''); if (key) messagesCacheRef.current.set(key, next); } catch {} return next; }); } catch(e){ console.error(e);} } });
                             }}>Delete for everyone</button>}
                           </div>
                         )}
