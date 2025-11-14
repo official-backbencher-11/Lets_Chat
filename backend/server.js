@@ -58,7 +58,10 @@ app.use(cors({
   origin: allowedOrigins,
   credentials: true
 }));
-app.use(helmet());
+app.use(helmet({
+  // Allow assets like images to be loaded from this backend by the frontend running on a different origin (e.g. :3000)
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 // Increase JSON/body limits to allow small base64 avatars from Setup Profile
 app.use(express.json({ limit: '8mb' }));
 app.use(express.urlencoded({ extended: true, limit: '8mb' }));

@@ -13,8 +13,18 @@ router.get('/conversations', authMiddleware, async (req, res) => {
     // Load fresh hidden peers from DB to avoid any stale request-scoped user
     const meDoc = await User.findById(userId).select('hidden.peers');
     const hiddenList = (meDoc?.hidden?.peers || []);
-    const hiddenPeers = hiddenList.map((id) => (typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id));
-    const hiddenPeerStrs = hiddenList.map((id) => String(id));
+    // Normalize hidden peers as ObjectIds; ignore malformed values defensively
+    const hiddenPeers = hiddenList
+      .map((id) => {
+        try {
+          if (!id) return null;
+          if (typeof id === 'string') return new mongoose.Types.ObjectId(id);
+          return id;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
 
     // Get all unique conversations (exclude hidden peers)
     const conversations = await Message.aggregate([
@@ -63,15 +73,9 @@ router.get('/conversations', authMiddleware, async (req, res) => {
           }
         }
       },
-      // Exclude hidden peers from the result set (supports both ObjectId and string forms)
+      // Exclude hidden peers from the result set
       {
         $match: { _id: { $nin: hiddenPeers } }
-      },
-      {
-        $addFields: { _idStr: { $toString: '$_id' } }
-      },
-      {
-        $match: { _idStr: { $nin: hiddenPeerStrs } }
       },
       {
         $lookup: {
@@ -104,8 +108,7 @@ router.get('/conversations', authMiddleware, async (req, res) => {
             status: '$lastMessage.status',
             sender: '$lastMessage.sender'
           },
-          unreadCount: 1,
-          _idStr: 0
+          unreadCount: 1
         }
       },
       {
@@ -245,6 +248,9 @@ router.post('/send', authMiddleware, async (req, res) => {
           senderId: String(req.user._id),
           recipientId: String(recipientId),
           message: message.content,
+          messageType: message.messageType,
+          fileUrl: message.fileUrl || '',
+          fileName: message.fileName || '',
           timestamp: message.createdAt,
           // include sender profile for instant UI context on recipient side
           senderName: message.sender?.name || req.user?.name || '',
@@ -519,12 +525,10 @@ router.post('/hide', authMiddleware, async (req, res) => {
     const { peerId, pin } = req.body;
     if (!peerId || !pin) return res.status(400).json({ success: false, message: 'peerId and pin required' });
     const user = await User.findById(req.user._id);
-    if (!user.hidden.pinHash) {
-      await user.setPin(pin);
-    } else {
-      const ok = await user.verifyPin(pin);
-      if (!ok) return res.status(403).json({ success: false, message: 'Invalid PIN' });
-    }
+
+    // Always set/update the PIN when hiding so the user can choose a new secret
+    await user.setPin(pin);
+
     if (!user.hidden.peers.map(String).includes(String(peerId))) user.hidden.peers.push(peerId);
     await user.save();
     res.json({ success: true });

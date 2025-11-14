@@ -12,6 +12,7 @@
   flex-direction: column;
 }
 
+/* Gradient header bar for LetsChat + Logout */
 .sidebar-header {
   padding: 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -21,9 +22,15 @@
   align-items: center;
 }
 
-.sidebar-header h2 {
-  margin: 0;
-  font-size: 20px;
+.logout-btn {
+  padding: 8px 16px;
+  background: white;
+  color: #667eea;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
 }
 
 .logout-btn {
@@ -107,13 +114,14 @@
 .chat-main {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .empty-chat {
   text-align: center;
   color: #999;
+  margin: auto;
 }
 
 .empty-chat h2 {
@@ -144,14 +152,18 @@
   height: 36px;
   font-size: 14px;
 }
-.conv-meta { display: flex; flex-direction: column; align-items: flex-start; }
+.conv-meta { display: flex; flex-direction: column; align-items: flex-start; flex: 1; }
 .conv-name { font-weight: 600; font-size: 14px; color: #222; }
+.conv-name--clickable { cursor: pointer; }
+.conv-name--clickable:hover { text-decoration: underline; }
 .conv-last { font-size: 12px; color: #777; }
+.conv-unread { margin-left: auto; }
+.unread-badge { min-width: 18px; padding: 2px 6px; border-radius: 999px; background: #1e88e5; color: #fff; font-size: 11px; text-align: center; }
 
 .chat-main { flex: 1; display: flex; flex-direction: column; }
 .chat-panel { display: flex; flex-direction: column; height: 100vh; width: 100%; }
 .chat-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #eee; }
-.messages { flex: 1; padding: 16px; background: #e5ddd5; }
+.messages { flex: 1; padding: 16px; background: transparent; }
 .message-row { display: flex; margin-bottom: 8px; }
 .message-row.mine { justify-content: flex-end; }
 .message-bubble { max-width: 65%; padding: 8px 10px; border-radius: 8px; background: #fff; }
@@ -182,7 +194,39 @@
 .profile-avatar { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; background: #f0f0f0; }
 .profile-avatar-picker { margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
 
-/* Generic modal */
+/* Peer profile view */
+.profile-drawer--peer { max-width: 420px; margin-left: auto; margin-right: auto; border-radius: 16px 16px 0 0; padding: 0; overflow: hidden; }
+.peer-profile-header { padding: 32px 20px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; text-align: center; position: relative; }
+.peer-avatar-large { width: 96px; height: 96px; border-radius: 50%; background: rgba(255,255,255,0.18); margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 600; overflow: hidden; box-shadow: 0 6px 16px rgba(0,0,0,0.25); cursor: pointer; }
+.peer-profile-header h2 { margin: 0 0 4px; font-size: 20px; }
+.peer-status-text { margin: 0; font-size: 13px; opacity: 0.9; }
+.peer-profile-body { padding: 16px 20px 20px; background: #f7f8ff; }
+.peer-bio-card { background: #fff; border-radius: 12px; padding: 12px 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.04); margin-bottom: 10px; }
+.peer-bio-card h4 { margin: 0 0 6px; font-size: 13px; color: #555; text-transform: uppercase; letter-spacing: 0.04em; }
+ .peer-bio-card p { margin: 0; font-size: 14px; color: #333; }
+
+.profile-close-icon {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: none;
+  background: rgba(0,0,0,0.15);
+  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+.profile-close-icon:hover {
+  background: rgba(0,0,0,0.25);
+}
+
+ /* Generic modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index: 10000; }
 .modal { background: #fff; width: 92vw; max-width: 420px; border-radius: 12px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
 .modal h3 { margin: 0 0 10px; }
@@ -195,8 +239,25 @@
 .number-search .row { display: flex; gap: 8px; }
 .number-search input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; }
 .number-search button { padding: 10px 12px; border: none; background: #667eea; color: #fff; border-radius: 8px; cursor: pointer; }
-.history-chips { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+.history-section { margin-top: 8px; }
+.history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.history-title { font-size: 12px; font-weight: 600; color: #555; }
+.history-clear { border: none; background: none; font-size: 12px; color: #667eea; cursor: pointer; padding: 0; }
+.history-chips { margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
 .history-chip { background: #f1f3ff; color: #334; border-radius: 999px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+
+.image-download {
+  margin-top: 4px;
+  font-size: 11px;
+}
+.image-download a {
+  color: #1e88e5;
+  text-decoration: none;
+}
+.image-download a:hover {
+  text-decoration: underline;
+}
+
 
 @media (max-width: 768px) {
   .chat-sidebar, .chat-main { width: 100%; }

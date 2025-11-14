@@ -32,6 +32,7 @@ const Chat = () => {
   const [numberError, setNumberError] = useState('');
   const [numberResults, setNumberResults] = useState([]);
   const [hiddenResults, setHiddenResults] = useState([]);
+  const [hiddenPin, setHiddenPin] = useState('');
   const [history, setHistory] = useState(() => {
     try {
       const s = localStorage.getItem(HISTORY_KEY);
@@ -61,7 +62,10 @@ const Chat = () => {
   const [isBlocked, setIsBlocked] = useState(false);
   const [pinPromptOpen, setPinPromptOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
+  const [isHiddenChat, setIsHiddenChat] = useState(false);
 
+  // Peer profile view (for the user you are chatting with)
+  const [peerProfileOpen, setPeerProfileOpen] = useState(false);
   // Full avatar viewer
   const [avatarOpen, setAvatarOpen] = useState(false);
 
@@ -69,6 +73,7 @@ const Chat = () => {
   const [deleteChatModal, setDeleteChatModal] = useState(false);
   const [deleteChatMode, setDeleteChatMode] = useState('me');
   const [confirmModal, setConfirmModal] = useState({ open: false, title: '', body: '', onConfirm: null });
+  const [imagePreview, setImagePreview] = useState({ open: false, url: '', fileName: '' });
 
   const bottomRef = useRef(null);
   const messagesRef = useRef(null);
@@ -78,6 +83,30 @@ const Chat = () => {
   const searchAreaRef = useRef(null);
   // simple in-memory cache of recent messages per peer to avoid visible lag
   const messagesCacheRef = useRef(new Map());
+
+  // Helper: scroll messages view to the very bottom (latest message)
+  const scrollToBottom = useCallback((behavior = 'auto') => {
+    const container = messagesRef.current;
+    const bottomEl = bottomRef.current;
+
+    // If we have a container, use scrollHeight
+    if (container) {
+      try {
+        if (behavior === 'smooth' && typeof container.scrollTo === 'function') {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        } else {
+          container.scrollTop = container.scrollHeight;
+        }
+      } catch {}
+    }
+
+    // As a secondary safeguard, use the sentinel element at the end of the list
+    if (bottomEl && bottomEl.scrollIntoView) {
+      try {
+        bottomEl.scrollIntoView({ behavior, block: 'end' });
+      } catch {}
+    }
+  }, []);
 
   // Handle responsive switch
   useEffect(() => {
@@ -146,20 +175,25 @@ const Chat = () => {
     }
     // Use cache immediately for instant paint
     const cached = messagesCacheRef.current.get(String(peerId));
+    const hasCached = !!(cached && cached.length);
     if (cached && !opts.force) {
+      // Instant paint from cache so the user sees messages immediately
       setMessages(cached);
     }
-    setMessagesLoading(true);
+    // Only show loading state (and the "Loading messages…" placeholder) when we have no cache
+    setMessagesLoading(!hasCached || opts.force);
     setMessagesError('');
     try {
       // fetch a smaller first page to reduce latency; will still be cached
       const res = await chatAPI.getMessages(peerId, 1, 30);
       const mapped = (res.data.messages || []).map((m) => ({
         _id: m._id,
-        from: m.sender?._id || m.sender,
-        to: m.recipient?._id || m.recipient,
+        from: String(m.sender?._id || m.sender || ''),
+        to: String(m.recipient?._id || m.recipient || ''),
         type: m.messageType || m.type || 'text',
         content: m.content,
+        fileUrl: m.fileUrl || '',
+        fileName: m.fileName || '',
         createdAt: m.createdAt,
         status: m.status || 'sent',
       }));
@@ -170,23 +204,23 @@ const Chat = () => {
       try { messagesCacheRef.current.set(String(peerId), mapped); } catch {}
       // After loading, confirm read to peer (ensures blue ticks without refresh)
       try { const uid = String(userIdRef.current || ''); if (uid) { getSocket()?.emit('mark-read', { userId: uid, peerId: String(peerId) }); } } catch {}
-      // Scroll behavior: preserve position if requested, otherwise go bottom
+      // Scroll behavior: preserve position if requested, otherwise always go to latest message
       if (preserve && container) {
         requestAnimationFrame(() => {
           const newHeight = container.scrollHeight;
           const targetTop = Math.max(0, prevTop - (prevHeight - newHeight));
           container.scrollTop = targetTop;
         });
-      } else {
-        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 0);
       }
+      // Regardless of preserve, enforce scroll-to-bottom so latest message is always visible
+      requestAnimationFrame(() => scrollToBottom('auto'));
     } catch (e) {
       console.error('Failed to load messages', e);
       setMessagesError(e.response?.data?.message || 'Failed to load messages');
     } finally {
       setMessagesLoading(false);
     }
-  }, []);
+  }, [scrollToBottom]);
 
   // Ensure we are in our user room (in case of missed join)
   useEffect(() => {
@@ -205,30 +239,48 @@ const Chat = () => {
       // Dedupe by message id
       if (msg?._id && seenMsgIds.current.has(String(msg._id))) return;
       if (msg?._id) seenMsgIds.current.add(String(msg._id));
-      // If the message is for the active chat, append; otherwise update conversations list
-      const peerId = msg.from === user.id ? msg.to : msg.from;
-      if (selectedUser && peerId === selectedUser.id) {
+
+      const myId = String(user.id);
+      const peerId = String(msg.from) === myId ? String(msg.to) : String(msg.from);
+      const isActive = selectedUser && String(selectedUser.id) === String(peerId);
+
+      // If the message is for the active chat, append and scroll to bottom
+      if (isActive) {
         setMessages((prev) => [...prev, msg]);
-        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 0);
+        setTimeout(() => scrollToBottom('smooth'), 0);
       }
-      // Move conversation to top or add if new
+
+      // Move conversation to top or add if new and update unread counter
       setConversations((prev) => {
-        const others = prev.filter((c) => (c.user._id || c.user.id) !== peerId);
-        const existing = prev.find((c) => (c.user._id || c.user.id) === peerId) || { user: { _id: peerId } };
-        return [{ ...existing, lastMessage: { content: msg.content, createdAt: msg.createdAt, sender: msg.from } }, ...others];
+        const others = prev.filter((c) => String(c.user._id || c.user.id) !== String(peerId));
+        const existing = prev.find((c) => String(c.user._id || c.user.id) === String(peerId)) || { user: { _id: peerId } };
+        const baseUnread = existing.unreadCount || 0;
+        const nextUnread = isActive ? 0 : baseUnread + 1;
+        return [{
+          ...existing,
+          lastMessage: {
+            content: msg.content,
+            createdAt: msg.createdAt,
+            sender: msg.from,
+            messageType: msg.type,
+            fileUrl: msg.fileUrl || '',
+            fileName: msg.fileName || '',
+          },
+          unreadCount: nextUnread,
+        }, ...others];
       });
     };
 
-    socket.on('message', onMessage);
     socket.on('receive-message', (payload) => {
       const id = payload.messageId || `recv-${Date.now()}`;
-      if (id && seenMsgIds.current.has(String(id))) return;
       const msg = {
         _id: id,
-        from: payload.senderId,
-        to: selectedUser?.id === payload.senderId ? user.id : payload.recipientId,
-        type: 'text',
+        from: String(payload.senderId),
+        to: String(user.id),
+        type: payload.messageType || (payload.fileUrl ? 'image' : 'text'),
         content: payload.message,
+        fileUrl: payload.fileUrl || '',
+        fileName: payload.fileName || '',
         createdAt: payload.timestamp || new Date().toISOString(),
         status: 'delivered',
       };
@@ -339,7 +391,6 @@ const Chat = () => {
     });
 
     return () => {
-      socket.off?.('message', onMessage);
       socket.off?.('receive-message');
       socket.off?.('message-delivered');
       socket.off?.('messages-read');
@@ -348,7 +399,7 @@ const Chat = () => {
       socket.off?.('user-online');
       socket.off?.('user-offline');
     };
-  }, [user, selectedUser, setMessages, setConversations]);
+  }, [user, selectedUser, setMessages, setConversations, scrollToBottom]);
 
   // Stable socket listeners for delete events (not dependent on selectedUser rebinds)
   useEffect(() => {
@@ -441,6 +492,7 @@ const Chat = () => {
           setNumberResults([]);
           setHiddenResults([]);
           setNumberError('');
+          setHiddenPin('');
         }
       } catch {}
     };
@@ -456,6 +508,14 @@ const Chat = () => {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
+
+  // Keep view pinned to bottom whenever messages change in the active chat
+  useEffect(() => {
+    if (!selectedUser) return;
+    try {
+      scrollToBottom('auto');
+    } catch {}
+  }, [selectedUser, messages.length, scrollToBottom]);
 
   // Presence fallback polling (updates isOnline/lastSeen if socket events were missed)
   useEffect(() => {
@@ -490,9 +550,19 @@ const Chat = () => {
 
   const handleSelect = async (c) => {
     const u = c.user;
-    const normalized = { id: String(u._id || u.id), name: u.name, profilePicture: u.profilePicture, phoneNumber: u.phoneNumber };
+    const normalized = { id: String(u._id || u.id), name: u.name, profilePicture: u.profilePicture, phoneNumber: u.phoneNumber, about: u.about };
     setSelectedUser(normalized);
-    await loadMessages(normalized.id);
+    // Chats from the main list are not hidden
+    setIsHiddenChat(false);
+    // Clear unread count locally for this conversation for instant UI feedback
+    setConversations((prev) => prev.map((conv) => (
+      String(conv.user._id || conv.user.id) === normalized.id ? { ...conv, unreadCount: 0 } : conv
+    )));
+    // Fire-and-forget message load so UI updates instantly; scroll logic is handled inside loadMessages and effects
+    loadMessages(normalized.id);
+    // Extra safety: ensure we are scrolled to latest message after opening
+    scrollToBottom('auto');
+    setTimeout(() => scrollToBottom('auto'), 50);
     // Notify peer their messages are read
     try { getSocket()?.emit('mark-read', { userId: String(user.id), peerId: normalized.id }); } catch {}
   };
@@ -508,12 +578,20 @@ const Chat = () => {
     } catch {}
   };
 
+  const clearHistory = () => {
+    try {
+      setHistory([]);
+      localStorage.removeItem(HISTORY_KEY);
+    } catch {}
+  };
+
   const searchByNumber = async (num) => {
     const q = (num || numberQuery).trim();
     if (!q) return;
     setNumberError('');
     setHiddenResults([]);
     setNumberResults([]);
+    setHiddenPin('');
     setNumberLoading(true);
     try {
       if (/^\d{4}$/.test(q)) {
@@ -525,8 +603,13 @@ const Chat = () => {
           setHiddenResults([]);
         } else {
           setHiddenResults(convs);
+          // Remember the PIN used for this hidden list so unhide can work even after clearing the input
+          setHiddenPin(q);
         }
-        setNumberLoading(false);
+        // clear normal results and PIN from input once hidden chats appear
+        setNumberResults([]);
+        setNumberQuery('');
+        // loading will be reset in finally
         return;
       }
       const res = await chatAPI.searchUsers(q);
@@ -545,15 +628,26 @@ const Chat = () => {
     }
   };
 
-  const openChatWithUser = async (u) => {
+  const openChatWithUser = async (u, isHidden = false) => {
     if (!u) return;
-    const normalized = { id: String(u.id || u._id), name: u.name, profilePicture: u.profilePicture, phoneNumber: u.phoneNumber };
+    const normalized = { id: String(u.id || u._id), name: u.name, profilePicture: u.profilePicture, phoneNumber: u.phoneNumber, about: u.about };
     setSelectedUser(normalized);
-    await loadMessages(normalized.id);
-    // Clear search UI once a chat is opened
+    setIsHiddenChat(!!isHidden);
+    // Clear unread count if this peer already exists in conversations list
+    setConversations((prev) => prev.map((conv) => (
+      String(conv.user._id || conv.user.id) === normalized.id ? { ...conv, unreadCount: 0 } : conv
+    )));
+    // Fire-and-forget message load so UI updates instantly; scroll logic is handled inside loadMessages and effects
+    loadMessages(normalized.id);
+    // Extra safety: ensure we are scrolled to latest message after opening
+    scrollToBottom('auto');
+    setTimeout(() => scrollToBottom('auto'), 50);
+    // Clear search UI once a chat is opened (including PIN)
     setNumberResults([]);
     setHiddenResults([]);
     setNumberError('');
+    setNumberQuery('');
+    setHiddenPin('');
   };
 
   const handleSend = async (e) => {
@@ -574,7 +668,7 @@ const Chat = () => {
     };
     setMessages((prev) => [...prev, optimistic]);
     setInput('');
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 0);
+    setTimeout(() => scrollToBottom('smooth'), 0);
 
     try {
       setSending(true);
@@ -583,10 +677,12 @@ const Chat = () => {
       const m = res.data?.data || res.data?.message || {};
       const saved = {
         _id: m._id || `srv-${Date.now()}`,
-        from: m.sender?._id || m.sender || user.id,
-        to: m.recipient?._id || m.recipient || selectedUser.id,
+        from: String(m.sender?._id || m.sender || user.id),
+        to: String(m.recipient?._id || m.recipient || selectedUser.id),
         type: m.messageType || 'text',
         content: m.content || text,
+        fileUrl: m.fileUrl || '',
+        fileName: m.fileName || '',
         createdAt: m.createdAt || new Date().toISOString(),
         status: m.status || 'sent',
       };
@@ -635,7 +731,12 @@ const Chat = () => {
         <div className="user-profile">
           <div className="user-avatar" style={{cursor:'pointer'}} onClick={() => setProfileOpen(true)}>
             {user?.profilePicture ? (
-              <img src={user.profilePicture} alt="avatar" style={{width:'100%',height:'100%',borderRadius:'50%',objectFit:'cover'}} />
+              <img
+                key={user.profilePicture || 'no-pic'}
+                src={user.profilePicture}
+                alt="avatar"
+                style={{width:'100%',height:'100%',borderRadius:'50%',objectFit:'cover'}}
+              />
             ) : (
               (user?.name?.charAt(0).toUpperCase() || '?')
             )}
@@ -645,7 +746,6 @@ const Chat = () => {
             <p>{user?.about || 'Hey there! I am using LetsChat.'}</p>
           </div>
         </div>
-
 
         <div className="number-search" ref={searchAreaRef}>
           <div className="row">
@@ -663,7 +763,7 @@ const Chat = () => {
           {numberResults && numberResults.length > 0 && (
             <div style={{marginTop:6}}>
               {numberResults.slice(0,10).map((u) => (
-                <button key={u._id || u.id} className="conversation-item" onClick={() => openChatWithUser(u)}>
+                <button key={u._id || u.id} className="conversation-item" onClick={() => openChatWithUser(u, false)}>
                   <div className="user-avatar small">
                     {u.profilePicture ? (
                       <img src={u.profilePicture} alt="avatar" style={{width:'100%',height:'100%',borderRadius:'50%',objectFit:'cover'}} />
@@ -697,8 +797,24 @@ const Chat = () => {
                     </div>
                   </div>
                   <div style={{display:'flex', gap:8}}>
-                    <button className="profile-save" onClick={() => openChatWithUser({ id: c.user._id, name: c.user.name, profilePicture: c.user.profilePicture, phoneNumber: c.user.phoneNumber })}>Open</button>
-                    <button className="profile-cancel" onClick={async ()=>{ try { await chatAPI.unhideChat(c.user._id, numberQuery); const left = hiddenResults.filter(x => x.user._id !== c.user._id); setHiddenResults(left); const convs = await chatAPI.getConversations(); setConversations(convs.data?.conversations || []); } catch(e){ console.error(e);} }}>Unhide</button>
+                    <button className="profile-save" onClick={() => openChatWithUser({ id: c.user._id, name: c.user.name, profilePicture: c.user.profilePicture, phoneNumber: c.user.phoneNumber }, true)}>Open</button>
+                    <button className="profile-cancel" onClick={async ()=>{
+                      try {
+                        const pin = hiddenPin || numberQuery;
+                        await chatAPI.unhideChat(c.user._id, pin);
+                        const left = hiddenResults.filter(x => String(x.user._id) !== String(c.user._id));
+                        setHiddenResults(left);
+                        // If this chat is currently open, mark it as unhidden
+                        if (selectedUser && String(selectedUser.id) === String(c.user._id)) {
+                          setIsHiddenChat(false);
+                        }
+                        const convs = await chatAPI.getConversations();
+                        setConversations(convs.data?.conversations || []);
+                        setNumberQuery('');
+                        setNumberError('');
+                        setHiddenPin('');
+                      } catch(e){ console.error(e);} 
+                    }}>Unhide</button>
                   </div>
                 </div>
               ))}
@@ -706,10 +822,16 @@ const Chat = () => {
           )}
 
           {history?.length > 0 && (
-            <div className="history-chips">
-              {history.map((h) => (
-                <span key={h} className="history-chip" onClick={() => { setNumberQuery(h); searchByNumber(h); }}>{h}</span>
-              ))}
+            <div className="history-section">
+              <div className="history-header">
+                <span className="history-title">Recent searches</span>
+                <button type="button" className="history-clear" onClick={clearHistory}>Clear</button>
+              </div>
+              <div className="history-chips">
+                {history.map((h) => (
+                  <span key={h} className="history-chip" onClick={() => { setNumberQuery(h); searchByNumber(h); }}>{h}</span>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -740,6 +862,11 @@ const Chat = () => {
                 <div className="conv-name">{c.user.name || 'Unknown'}</div>
                 <div className="conv-last">{c.lastMessage?.content || ''}</div>
               </div>
+              {c.unreadCount > 0 && (
+                <div className="conv-unread">
+                  <span className="unread-badge">{c.unreadCount}</span>
+                </div>
+              )}
             </button>
           ))}
         </div>
@@ -754,18 +881,28 @@ const Chat = () => {
         ) : (
           <div className="chat-panel">
             <div className="chat-header">
-              {isNarrow && (
+              {selectedUser && (
                 <button className="back-btn" onClick={() => setSelectedUser(null)} aria-label="Back">←</button>
               )}
               <div className="user-avatar small" style={{cursor:'pointer'}} onClick={() => setAvatarOpen(true)}>
                 {selectedUser?.profilePicture ? (
-                  <img src={selectedUser.profilePicture} alt="avatar" style={{width:'100%',height:'100%',borderRadius:'50%',objectFit:'cover'}} />
+                  <img
+                    key={selectedUser.profilePicture || 'no-pic'}
+                    src={selectedUser.profilePicture}
+                    alt="avatar"
+                    style={{width:'100%',height:'100%',borderRadius:'50%',objectFit:'cover'}}
+                  />
                 ) : (
                   (selectedUser.name || '?').charAt(0).toUpperCase()
                 )}
               </div>
               <div style={{flex:1}}>
-                <div className="conv-name">{selectedUser.name || selectedUser.phoneNumber}</div>
+                <div
+                  className="conv-name conv-name--clickable"
+                  onClick={() => setPeerProfileOpen(true)}
+                >
+                  {selectedUser.name || selectedUser.phoneNumber}
+                </div>
                 <div className="conv-last">
                   {typing ? 'typing…' : (peerOnline ? 'online' : (peerLastSeen ? `last seen ${new Date(peerLastSeen).toLocaleString()}` : ''))}
                 </div>
@@ -773,7 +910,7 @@ const Chat = () => {
               {/* Header actions */}
               <div>
                 <button className="profile-cancel" onClick={()=>{ setDeleteChatMode('me'); setDeleteChatModal(true); }}>Delete chat</button>
-                <button className="profile-cancel" onClick={()=> setPinPromptOpen(true)}>Hide chat</button>
+                <button className="profile-cancel" onClick={()=> setPinPromptOpen(true)}>{isHiddenChat ? 'Unhide chat' : 'Hide chat'}</button>
                 {isBlocked ? (
                   <button className="profile-save" onClick={async ()=>{ try { await chatAPI.unblockUser(selectedUser.id); setIsBlocked(false);} catch(e){console.error(e);} }}>Unblock</button>
                 ):(
@@ -787,16 +924,27 @@ const Chat = () => {
               {messagesError && <div className="error-message">{messagesError}</div>}
               {!messagesLoading && messages.map((m) => {
                 const mine = m.from === user.id;
-                const isImage = (m.type || '').startsWith('image');
-                const isDoc = (m.type || '') === 'document' || (!!m.fileUrl && !isImage);
+                const hasFile = !!m.fileUrl;
+                const isDoc = (m.type || '') === 'document';
+                // Treat any non-document file message as an image so preview always shows
+                const isImage = hasFile && !isDoc;
                 return (
                   <div key={m._id} className={`message-row ${mine ? 'mine' : 'theirs'}`}>
                     <div className={`message-bubble ${m.status === 'failed' ? 'failed' : ''}`}>
                       {/* content */}
                       {isImage && m.fileUrl ? (
-                        <a href={m.fileUrl} target="_blank" rel="noreferrer">
-                          <img alt={m.fileName || 'image'} src={m.fileUrl} style={{maxWidth:'260px', borderRadius:8}} />
-                        </a>
+                        <div>
+                          <img
+                            alt={m.fileName || 'image'}
+                            src={m.fileUrl}
+                            style={{maxWidth:'260px', borderRadius:8, cursor:'pointer'}}
+                            onLoad={() => scrollToBottom('auto')}
+                            onClick={() => setImagePreview({ open: true, url: m.fileUrl, fileName: m.fileName || 'image' })}
+                          />
+                          <div className="image-download">
+                            <a href={m.fileUrl} download={m.fileName || 'image'} target="_blank" rel="noreferrer">Download</a>
+                          </div>
+                        </div>
                       ) : isDoc && m.fileUrl ? (
                         <div>
                           <div className="message-text">{m.content || m.fileName}</div>
@@ -839,10 +987,63 @@ const Chat = () => {
                 try {
                   const up = await chatAPI.upload(f);
                   const file = up.data?.file || {};
-                  const type = (file.mimeType || '').startsWith('image/') ? 'image' : 'document';
-                  await chatAPI.sendMessage({ recipientId: selectedUser.id, content: file.fileName || f.name, messageType: type, fileUrl: file.url, fileName: file.fileName || f.name });
-                  // refresh messages head
-                  await loadMessages(selectedUser.id);
+                  const lowerName = String(file.fileName || f.name || '').toLowerCase();
+                  const isImg =
+                    (file.mimeType || '').startsWith('image/') ||
+                    /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(lowerName);
+                  const type = isImg ? 'image' : 'document';
+                  const res = await chatAPI.sendMessage({
+                    recipientId: selectedUser.id,
+                    content: file.fileName || f.name,
+                    messageType: type,
+                    fileUrl: file.url,
+                    fileName: file.fileName || f.name,
+                  });
+                  const m = res.data?.data || res.data?.message || {};
+                  const saved = {
+                    _id: m._id || `file-${Date.now()}`,
+                    from: String(m.sender?._id || m.sender || user.id),
+                    to: String(m.recipient?._id || m.recipient || selectedUser.id),
+                    type: m.messageType || type,
+                    content: m.content || file.fileName || f.name,
+                    fileUrl: m.fileUrl || file.url || '',
+                    fileName: m.fileName || file.fileName || f.name,
+                    createdAt: m.createdAt || new Date().toISOString(),
+                    status: m.status || 'sent',
+                  };
+                  setMessages((prev) => {
+                    const next = [...prev, saved];
+                    try {
+                      const key = String(selectedUser.id);
+                      messagesCacheRef.current.set(key, next);
+                    } catch {}
+                    return next;
+                  });
+                  setTimeout(() => scrollToBottom('smooth'), 0);
+                  // Move/insert conversation to top with file preview as last message
+                  setConversations((prev) => {
+                    const others = prev.filter((c) => (c.user._id || c.user.id) !== selectedUser.id);
+                    const existing = prev.find((c) => (c.user._id || c.user.id) === selectedUser.id) || {
+                      user: {
+                        _id: selectedUser.id,
+                        name: selectedUser.name,
+                        profilePicture: selectedUser.profilePicture,
+                      },
+                    };
+                    return [
+                      {
+                        ...existing,
+                        lastMessage: {
+                          content: saved.content,
+                          createdAt: saved.createdAt,
+                          messageType: saved.type,
+                          fileUrl: saved.fileUrl,
+                          fileName: saved.fileName,
+                        },
+                      },
+                      ...others,
+                    ];
+                  });
                 } catch(err){ console.error(err);} finally { e.target.value = ''; }
               }} />
               <input
@@ -866,13 +1067,64 @@ const Chat = () => {
             </form>
           </div>
         )}
-      </div>
+        </div>
+      {peerProfileOpen && selectedUser && (
+        <div className="profile-overlay" onClick={() => setPeerProfileOpen(false)}>
+          <div className="profile-drawer profile-drawer--peer" onClick={(e) => e.stopPropagation()}>
+            <div className="peer-profile-header">
+              <button
+                className="profile-close-icon"
+                onClick={() => setPeerProfileOpen(false)}
+                aria-label="Close profile"
+              >
+                ×
+              </button>
+              <div
+                className="peer-avatar-large"
+                onClick={() => selectedUser.profilePicture && setAvatarOpen(true)}
+              >
+                {selectedUser.profilePicture ? (
+                  <img
+                    src={selectedUser.profilePicture}
+                    alt="avatar"
+                    style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  (selectedUser.name || selectedUser.phoneNumber || '?').charAt(0).toUpperCase()
+                )}
+              </div>
+              <h2>{selectedUser.name || selectedUser.phoneNumber}</h2>
+              <p className="peer-status-text">
+                {typing ? 'typing…' : (peerOnline ? 'online' : (peerLastSeen ? `last seen ${new Date(peerLastSeen).toLocaleString()}` : ''))}
+              </p>
+            </div>
+            <div className="peer-profile-body">
+              <div className="peer-bio-card">
+                <h4>About</h4>
+                <p>{selectedUser.about || 'Hey there! I am using LetsChat.'}</p>
+              </div>
+              {selectedUser.phoneNumber && (
+                <div className="peer-bio-card">
+                  <h4>Phone</h4>
+                  <p>{selectedUser.phoneNumber}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {profileOpen && (
         <div className="profile-overlay" onClick={() => setProfileOpen(false)}>
           <div className="profile-drawer" onClick={(e) => e.stopPropagation()}>
             <h3>Your Profile</h3>
             <div className="profile-avatar-picker">
-              <img className="profile-avatar" src={editPhoto || user?.profilePicture || ''} alt="avatar" onError={(e)=>{e.target.style.display='none'}} />
+              <img
+                className="profile-avatar"
+                key={editPhoto || user?.profilePicture || 'no-pic'}
+                src={editPhoto || user?.profilePicture || ''}
+                alt="avatar"
+                onError={(e)=>{e.target.style.display='none'}}
+              />
               <div>
                 <button className="profile-cancel" onClick={() => fileRef.current?.click()}>Change Photo</button>
                 {editPhoto && <button className="profile-cancel" onClick={() => setEditPhoto('')}>Remove</button>}
@@ -969,11 +1221,41 @@ const Chat = () => {
         </div>
       )}
 
+      {/* Image preview modal */}
+      {imagePreview.open && (
+        <div className="modal-overlay" onClick={() => setImagePreview({ open: false, url: '', fileName: '' })}>
+          <div className="modal image-preview-modal" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={imagePreview.url}
+              alt={imagePreview.fileName || 'image'}
+              style={{ maxWidth: '90vw', maxHeight: '80vh', objectFit: 'contain', borderRadius: 8, display: 'block', margin: '0 auto' }}
+            />
+            <div className="modal-actions">
+              <a
+                className="profile-save"
+                href={imagePreview.url}
+                download={imagePreview.fileName || 'image'}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Download
+              </a>
+              <button
+                className="profile-cancel"
+                onClick={() => setImagePreview({ open: false, url: '', fileName: '' })}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hide chat PIN prompt */}
       {pinPromptOpen && (
         <div className="profile-overlay" onClick={()=> setPinPromptOpen(false)}>
           <div className="profile-drawer" onClick={(e)=> e.stopPropagation()}>
-            <h3>Hide this chat</h3>
+            <h3>{isHiddenChat ? 'Unhide this chat' : 'Hide this chat'}</h3>
             <div className="profile-field">
               <label>Enter 4-digit PIN</label>
               <input maxLength={4} value={pinInput} onChange={(e)=> setPinInput(e.target.value.replace(/\D/g,''))} />
@@ -981,16 +1263,26 @@ const Chat = () => {
             <div className="profile-actions">
               <button className="profile-save" disabled={pinInput.length!==4} onClick={async ()=>{
                 try {
-                  await chatAPI.hideChat(selectedUser.id, pinInput);
+                  if (isHiddenChat) {
+                    // Unhide the current chat
+                    await chatAPI.unhideChat(selectedUser.id, pinInput);
+                    setIsHiddenChat(false);
+                    // Refresh conversations so it appears in main list
+                    try { const res = await chatAPI.getConversations(); setConversations(res.data?.conversations || []); } catch {}
+                  } else {
+                    // Hide the current chat
+                    await chatAPI.hideChat(selectedUser.id, pinInput);
+                    setIsHiddenChat(true);
+                    // remove from local list immediately for responsiveness
+                    setConversations(prev => prev.filter(c => String(c.user._id || c.user.id) !== String(selectedUser.id)));
+                    setSelectedUser(null);
+                    // refresh conversations in background to stay consistent
+                    try { const res = await chatAPI.getConversations(); setConversations(res.data?.conversations || []); } catch {}
+                  }
                   setPinPromptOpen(false);
                   setPinInput('');
-                  // remove from local list immediately for responsiveness
-                  setConversations(prev => prev.filter(c => String(c.user._id || c.user.id) !== String(selectedUser.id)));
-                  setSelectedUser(null);
-                  // refresh conversations in background to stay consistent
-                  try { const res = await chatAPI.getConversations(); setConversations(res.data?.conversations || []); } catch {}
                 } catch(err){ console.error(err);} 
-              }}>Hide</button>
+              }}>{isHiddenChat ? 'Unhide' : 'Hide'}</button>
               <button className="profile-cancel" onClick={()=> setPinPromptOpen(false)}>Cancel</button>
             </div>
           </div>
