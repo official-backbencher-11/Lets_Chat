@@ -23,3 +23,14 @@ LetsChat/
     │   └── App.js (Router)
     └── .env
 ```
+📁 BACKEND STRUCTURE
+LetsChat/
+├── backend/ ✅ COMPLETE
+│   ├── config/firebase.js
+│   ├── models/User.js, Message.js
+│   ├── routes/auth.js, chat.js
+│   ├── middleware/auth.js
+│   ├── server.js
+│   ├── .env (with Firebase keys)
+│   └── package.json
+├── frontend/ 
