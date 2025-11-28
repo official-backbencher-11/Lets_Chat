@@ -70,3 +70,5 @@ See backend/.env.example and frontend/.env.example for the minimal set.
 - For email link sign‑in, ensure Email Link (passwordless) is enabled and your Support email is verified in Firebase project settings.
 - Ensure uploads directory is writable; attachments are stored under backend/uploads.
 - This repository ignores node_modules and build artifacts.
+- The OTP is not recieved in real time as the billing is not enabled so please avoid it or suggest some alternative to make it cost free.
+- Use Email login process as its working completely.
