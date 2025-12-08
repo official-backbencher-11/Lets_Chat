@@ -4,9 +4,13 @@ A WhatsApp-like real‑time chat application.
 
 - Backend: Node.js, Express, MongoDB, Socket.io, Firebase Admin (auth verify)
 - Frontend: React (CRA), Socket.io client
+for number login use testing number and otp which is :
+  Phone Number - +91 1234567890
+  OTP -123456
+you can use email login for personal use its completely working.
 
 ## Features
-- Phone OTP login (Firebase Phone Auth)
+- Phone OTP login (Firebase Phone Auth)(cannot login with  number as billing is not enabled)
 - Email link (passwordless) login (Firebase Auth)
 - Profile setup with avatar
 - Real‑time messaging, ticks (sent/delivered/read)
